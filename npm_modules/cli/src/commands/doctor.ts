@@ -677,13 +677,25 @@ class ValdiDoctor {
             category: 'Java installation',
           });
         } else if (majorVersion > 0) {
+          // Generate platform-specific Java 17 install command
+          let javaFixCommand: string;
+          if (os.platform() === 'darwin') {
+            javaFixCommand = 'brew install openjdk@17';
+          } else {
+            const { detectPackageManager, getInstallCommandWithMapping } = require('../utils/packageManagerUtils');
+            const packageManager = detectPackageManager();
+            javaFixCommand = packageManager === 'unknown' 
+              ? 'Install OpenJDK 17 using your system\'s package manager'
+              : getInstallCommandWithMapping(['openjdk-17-jdk'], packageManager);
+          }
+
           this.addResult({
             name: 'Java Runtime',
             status: 'warn',
             message: `Java ${version} is outdated. Java 17+ is recommended`,
             details: 'dev_setup now installs Java 17 for better compatibility',
             fixable: true,
-            fixCommand: os.platform() === 'darwin' ? 'brew install openjdk@17' : 'sudo apt install openjdk-17-jdk',
+            fixCommand: javaFixCommand,
             category: 'Java installation',
           });
         } else {
@@ -705,13 +717,25 @@ class ValdiDoctor {
         });
       }
     } else {
+      // Generate platform-specific Java install command
+      let javaFixCommand: string;
+      if (os.platform() === 'darwin') {
+        javaFixCommand = 'brew install openjdk@17';
+      } else {
+        const { detectPackageManager, getInstallCommandWithMapping } = require('../utils/packageManagerUtils');
+        const packageManager = detectPackageManager();
+        javaFixCommand = packageManager === 'unknown' 
+          ? 'Install OpenJDK 17 using your system\'s package manager'
+          : getInstallCommandWithMapping(['openjdk-17-jdk'], packageManager);
+      }
+
       this.addResult({
         name: 'Java Runtime',
         status: 'fail',
         message: 'Java not found in PATH',
         details: 'dev_setup installs Java JDK for Android development',
         fixable: true,
-        fixCommand: os.platform() === 'darwin' ? 'brew install openjdk@17' : 'sudo apt install openjdk-17-jdk',
+        fixCommand: javaFixCommand,
         category: 'Java installation',
       });
     }
@@ -1164,30 +1188,46 @@ class ValdiDoctor {
    * @private
    */
   private getFixCommandForDependency(dep: string): string {
-    switch (dep) {
-      case 'git': {
-        return os.platform() === 'darwin' ? 'brew install git' : 'sudo apt-get install git';
+    // macOS uses Homebrew
+    if (os.platform() === 'darwin') {
+      switch (dep) {
+        case 'npm':
+          return 'Install Node.js from https://nodejs.org (includes npm)';
+        case 'ios_webkit_debug_proxy':
+          return 'brew install ios-webkit-debug-proxy';
+        case 'bazelisk':
+          return 'brew install bazelisk';
+        default:
+          return `brew install ${dep}`;
       }
+    }
+
+    // Linux - use package manager detection
+    // Import at runtime to avoid circular dependencies
+    const { detectPackageManager, getInstallCommandWithMapping } = require('../utils/packageManagerUtils');
+    const packageManager = detectPackageManager();
+
+    switch (dep) {
       case 'npm': {
         return 'Install Node.js from https://nodejs.org (includes npm)';
       }
-      case 'watchman': {
-        return os.platform() === 'darwin' ? 'brew install watchman' : 'sudo apt-get install watchman';
-      }
-      case 'git-lfs': {
-        return os.platform() === 'darwin' ? 'brew install git-lfs' : 'sudo apt-get install git-lfs';
-      }
       case 'bazelisk': {
-        return os.platform() === 'darwin' ? 'brew install bazelisk' : 'valdi dev_setup';
+        return 'valdi dev_setup';
       }
-      case 'ios_webkit_debug_proxy': {
-        return 'brew install ios-webkit-debug-proxy';
-      }
+      case 'git':
+      case 'watchman':
+      case 'git-lfs':
       case 'adb': {
-        return 'sudo apt-get install adb';
+        if (packageManager === 'unknown') {
+          return `Install ${dep} using your system's package manager`;
+        }
+        return getInstallCommandWithMapping([dep], packageManager);
       }
       default: {
-        return os.platform() === 'darwin' ? `brew install ${dep}` : `Install ${dep}`;
+        if (packageManager === 'unknown') {
+          return `Install ${dep} using your system's package manager`;
+        }
+        return getInstallCommandWithMapping([dep], packageManager);
       }
     }
   }
